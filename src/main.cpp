@@ -29,10 +29,10 @@ unsigned long currentMillis = 0;
 StaticJsonDocument<32> jsonRequest;
 DynamicJsonDocument beritaJson(18000);
 
-#define COLOR_DEPTH 48                  // Choose the color depth used for storing pixels in the layers: 24 or 48 (24 is good for most sketches - If the sketch uses type `rgb24` directly, COLOR_DEPTH must be 24)
+#define COLOR_DEPTH 24                  // Choose the color depth used for storing pixels in the layers: 24 or 48 (24 is good for most sketches - If the sketch uses type `rgb24` directly, COLOR_DEPTH must be 24)
 const uint16_t kMatrixWidth = 64;       // Set to the width of your display, must be a multiple of 8
 const uint16_t kMatrixHeight = 32;      // Set to the height of your display
-const uint8_t kRefreshDepth = 48;       // Tradeoff of color quality vs refresh rate, max brightness, and RAM usage.  36 is typically good, drop down to 24 if you need to.  On Teensy, multiples of 3, up to 48: 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48.  On ESP32: 24, 36, 48
+const uint8_t kRefreshDepth = 36;       // Tradeoff of color quality vs refresh rate, max brightness, and RAM usage.  36 is typically good, drop down to 24 if you need to.  On Teensy, multiples of 3, up to 48: 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48.  On ESP32: 24, 36, 48
 const uint8_t kDmaBufferRows = 4;       // known working: 2-4, use 2 to save RAM, more to keep from dropping frames and automatically lowering refresh rate.  (This isn't used on ESP32, leave as default)
 const uint8_t kPanelType = SM_PANELTYPE_HUB75_32ROW_MOD16SCAN;   // Choose the configuration that matches your panels.  See more details in MatrixCommonHub75.h and the docs: https://github.com/pixelmatix/SmartMatrix/wiki
 const uint32_t kMatrixOptions = (SM_HUB75_OPTIONS_NONE);        // see docs for options: https://github.com/pixelmatix/SmartMatrix/wiki
@@ -43,10 +43,11 @@ SMARTMATRIX_ALLOCATE_BUFFERS(matrix, kMatrixWidth, kMatrixHeight, kRefreshDepth,
                              kMatrixOptions);
 
 SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(scrollingBerita, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
-SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(scrollingLayer2, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
+SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(dateLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
 SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(scrollingLayer3, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
 SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(scrollingLayer4, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
 SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(scrollingLayer5, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
+
 SMARTMATRIX_ALLOCATE_INDEXED_LAYER(timeLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kIndexedLayerOptions);
 
 char ssid[] = "Smart Home AP"; // Nama Wifi Anda
@@ -128,16 +129,31 @@ void updateTime() {
     if (last_t == t)
         return;
     last_t = t;
-    uint8_t jam, menit, detik;
+    uint8_t jam, menit, detik, mday, myear;
     tm = localtime(&t);
     jam = tm->tm_hour;
     menit = tm->tm_min;
     detik = tm->tm_sec;
+    mday = tm->tm_mday;
+    myear = tm->tm_year;
+    String wday = wd[tm->tm_wday];
+
     sprintf(timeBuffer, "%02d:%02d:%02d", jam, menit, detik);
     timeLayer.fillScreen(0);
     timeLayer.setFont(font8x13);
     timeLayer.drawString(0, 0, 1, timeBuffer);
     timeLayer.swapBuffers(false);
+
+    String dateFormatShow = String(wday) + ", " + String(mday) + " " + 2022;
+    int str_len = dateFormatShow.length() + 2;
+    Serial.println(tm);
+
+    char dateBuffer[str_len];
+    dateFormatShow.toCharArray(dateBuffer, str_len);
+    dateLayer.setColor(fullRed);
+    dateLayer.setOffsetFromTop(12);
+    if (dateLayer.getStatus() == 0)
+        dateLayer.start(dateBuffer, 1);
 }
 
 void scheduleFetchBerita() {
@@ -180,16 +196,21 @@ void setupWifi() {
 
 void setupMatrix() {
     matrix.addLayer(&scrollingBerita);
+    matrix.addLayer(&dateLayer);
     matrix.addLayer(&timeLayer);
     matrix.begin();
+
     timeLayer.fillScreen(0);
     timeLayer.setFont(font6x10);
+
+    dateLayer.setFont(font6x10);
+
     scrollingBerita.setFont(gohufont11b);
     scrollingBerita.setMode(wrapForward);
 }
 
 void setup() {
-    Serial.begin(115200);
+    Serial.begin( 9600);
     Message0 = preferences.getString("message", Message0);
     scrollDelay = preferences.getInt("scrollDelay", scrollDelay);
     brightness = preferences.getInt("brightness", brightness);
